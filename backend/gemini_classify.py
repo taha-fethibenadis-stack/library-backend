@@ -26,7 +26,7 @@ MODEL = "gemini-2.5-flash"
 # Anything else falls back to classifying from the filename/caption alone.
 MULTIMODAL_MIME_PREFIXES = ("image/", "application/pdf")
 
-CLASSIFY_SYSTEM_PROMPT = """You are the librarian for a university class group chat called "Promo Library".
+CLASSIFY_SYSTEM_PROMPT = """You are the librarian for a university class group chat.
 Students dump lecture slides, exercise sheets, and exam papers into the group with no
 structure. Your job is to classify each file so it can be organized and searched later.
 
@@ -44,8 +44,8 @@ Rules:
 - "subject" must be a short, consistent, capitalized academic subject name. Reuse common
   subject names rather than inventing new variants (don't return both "CS" and "Computer Science").
 - "tag" must be exactly one of: Lecture, Exercise, Exam. If genuinely unclear, infer the
-  closest match from the filename/content (e.g. "TD", "worksheet", "homework" -> Exercise;
-  "midterm", "final", "quiz" -> Exam; default to Lecture otherwise).
+  closest match from the filename/content (e.g. "TD", "worksheet", "homework" ,"TP" -> Exercise;
+  "midterm", "final", "quiz" ,"DS" ,"EMD" ,"examen" -> Exam; default to Lecture otherwise).
 - "summary" should pack in topics, chapter names, or keywords likely to appear in a
   student's search, not a generic description.
 - If you cannot determine the subject at all, use "Uncategorized".
