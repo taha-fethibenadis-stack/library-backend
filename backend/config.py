@@ -28,10 +28,6 @@ SUPABASE_KEY = _require("SUPABASE_KEY")
 
 GEMINI_API_KEY = _require("GEMINI_API_KEY")
 
-# Optional — restricts the bot's auto-save behaviour to one specific group.
-# Leave unset to allow any group the bot is added to.
-TELEGRAM_GROUP_ID = os.environ.get("TELEGRAM_GROUP_ID")
-
 # Comma-separated list of allowed frontend origins for CORS
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "*")
 ALLOWED_ORIGINS = (
