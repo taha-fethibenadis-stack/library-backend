@@ -22,34 +22,68 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 MODEL = "gemini-2.5-flash"
 
+# The exact list of courses for this class/semester. Gemini is forced to pick
+# one of these verbatim, so subjects can never drift into near-duplicate
+# variants (e.g. "Math" vs "Mathematics" vs "Analyse"). Edit this list
+# whenever the curriculum changes (new semester, different promo, etc.) —
+# nothing else in the code needs to change.
+SUBJECTS = [
+    "Analyse 3",
+    "Analyse numérique 1",
+    "Physique 3",
+    "Chimie 3",
+    "Mécanique rationnelle",
+    "Electricité générale",
+    "Mécanique des fluides",
+    "Informatique 3",
+    "Ingénierie 1",
+    "Techniques d'expression 1",
+    "Anglais 3",
+]
+# Fallback used only when a file genuinely doesn't match any course above
+# (e.g. someone shares a meme or an unrelated file in the group).
+FALLBACK_SUBJECT = "Autre"
+
 # File types Gemini can read directly (multimodal) for a much better summary.
 # Anything else falls back to classifying from the filename/caption alone.
 MULTIMODAL_MIME_PREFIXES = ("image/", "application/pdf")
 
-CLASSIFY_SYSTEM_PROMPT = """You are the librarian for a university class group chat.
+_subjects_block = "\n".join(f"- {s}" for s in SUBJECTS)
+
+CLASSIFY_SYSTEM_PROMPT = (
+    """You are the librarian for a university class group chat called "Promo Library".
 Students dump lecture slides, exercise sheets, and exam papers into the group with no
 structure. Your job is to classify each file so it can be organized and searched later.
 
 Always respond with ONLY a single valid JSON object, no markdown fences, no commentary,
 in exactly this shape:
 {
-  "subject": "<short subject name, e.g. Math, Physics, Computer Science, Chemistry, English>",
+  "subject": "<one of the exact course names listed below>",
   "tag": "<one of exactly: Lecture, Exercise, Exam>",
   "summary": "<one keyword-dense sentence describing the content, written so a student
                searching with casual language like 'that physics sheet about vectors'
                would match it>"
 }
 
+The class follows EXACTLY these courses this semester. "subject" MUST be one of these
+strings, copied verbatim (same spelling, accents, and numbering):
+"""
+    + _subjects_block
+    + f"""
+
+If a file genuinely does not belong to any of these courses (e.g. an off-topic file,
+meme, or general announcement), use "{FALLBACK_SUBJECT}" instead of forcing it into one of them.
+
 Rules:
-- "subject" must be a short, consistent, capitalized academic subject name. Reuse common
-  subject names rather than inventing new variants (don't return both "CS" and "Computer Science").
 - "tag" must be exactly one of: Lecture, Exercise, Exam. If genuinely unclear, infer the
-  closest match from the filename/content (e.g. "TD", "worksheet", "homework" ,"TP" -> Exercise;
-  "midterm", "final", "quiz" ,"DS" ,"EMD" ,"examen" -> Exam; default to Lecture otherwise).
+  closest match from the filename/content (e.g. "TD", "worksheet", "homework", "TP" -> Exercise;
+  "examen", "interrogation", "rattrapage", "midterm", "final", "EMD", "DS" -> Exam; default to Lecture
+  otherwise).
 - "summary" should pack in topics, chapter names, or keywords likely to appear in a
   student's search, not a generic description.
-- If you cannot determine the subject at all, use "Uncategorized".
+- Never invent a subject name that isn't in the list above (other than the fallback).
 """
+)
 
 
 def _safe_parse_json(text: str) -> dict | None:
@@ -76,6 +110,7 @@ def classify_file(
     Returns {"subject": str, "tag": str, "summary": str}.
     Uses multimodal input (actual file content) when possible, otherwise
     falls back to classifying from the filename + caption alone.
+    `subject` is guaranteed to be either one of SUBJECTS or FALLBACK_SUBJECT.
     """
     text_prompt = f"File name: {file_name}"
     if caption:
@@ -117,15 +152,31 @@ def classify_file(
         parsed = None
 
     if not parsed:
-        return {"subject": "Uncategorized", "tag": "Lecture", "summary": file_name}
+        return {"subject": FALLBACK_SUBJECT, "tag": "Lecture", "summary": file_name}
 
-    subject = str(parsed.get("subject") or "Uncategorized").strip() or "Uncategorized"
+    subject = _snap_to_known_subject(str(parsed.get("subject") or ""))
     tag = str(parsed.get("tag") or "Lecture").strip()
     if tag not in ("Lecture", "Exercise", "Exam"):
         tag = "Lecture"
     summary = str(parsed.get("summary") or file_name).strip()
 
     return {"subject": subject, "tag": tag, "summary": summary}
+
+
+_SUBJECTS_BY_LOWER = {s.lower(): s for s in SUBJECTS}
+
+
+def _snap_to_known_subject(raw_subject: str) -> str:
+    """
+    Guarantees the returned subject is always exactly one of SUBJECTS or
+    FALLBACK_SUBJECT — even if Gemini deviates slightly (extra whitespace,
+    wrong casing, or ignores the instruction entirely).
+    """
+    cleaned = raw_subject.strip()
+    if cleaned in SUBJECTS:
+        return cleaned
+    match = _SUBJECTS_BY_LOWER.get(cleaned.lower())
+    return match if match else FALLBACK_SUBJECT
 
 
 SEARCH_SYSTEM_PROMPT = """You are the search engine for a university class file library called
