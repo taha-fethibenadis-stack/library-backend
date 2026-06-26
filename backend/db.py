@@ -29,6 +29,23 @@ def file_exists(file_unique_id: str) -> bool:
     return bool(result.data)
 
 
+def file_exists_by_hash(file_hash: str) -> bool:
+    """
+    Catches re-uploads of the same file content under a different
+    file_unique_id (e.g. a recompressed photo sent again).
+    """
+    if not file_hash:
+        return False
+    result = (
+        supabase.table(TABLE)
+        .select("id")
+        .eq("file_hash", file_hash)
+        .limit(1)
+        .execute()
+    )
+    return bool(result.data)
+
+
 def get_all_files() -> list[dict]:
     result = (
         supabase.table(TABLE)
