@@ -13,6 +13,7 @@ Run locally:
     webhook locally — see README.md)
 """
 import logging
+import hashlib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException
@@ -38,13 +39,9 @@ bot: Bot = telegram_app.bot
 # ---------------------------------------------------------------------------
 
 async def handle_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Fires on any document or photo posted in the group."""
+    """Fires on any document or photo posted in any group the bot is in."""
     message = update.effective_message
     if message is None:
-        return
-
-    # Optional: restrict auto-save to one specific configured group
-    if config.TELEGRAM_GROUP_ID and str(message.chat_id) != str(config.TELEGRAM_GROUP_ID):
         return
 
     document = message.document
@@ -82,6 +79,14 @@ async def handle_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except Exception:
         logger.exception("Could not download file %s for Gemini analysis", file_name)
 
+    # Second de-dup layer: same content re-uploaded under a different
+    # file_unique_id (common with re-sent photos). Cheap to check, and we
+    # already have the bytes in hand.
+    file_hash = hashlib.sha256(file_bytes).hexdigest() if file_bytes else None
+    if file_hash and db.file_exists_by_hash(file_hash):
+        logger.info("Duplicate file content skipped (same hash, new file_unique_id): %s", file_name)
+        return
+
     classification = classify_file(
         file_name=file_name,
         caption=caption,
@@ -100,6 +105,7 @@ async def handle_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "subject": classification["subject"],
         "tag": classification["tag"],
         "summary": classification["summary"],
+        "file_hash": file_hash,
     }
     db.insert_file(record)
 
